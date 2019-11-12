@@ -40,6 +40,7 @@
 #include <pcl_ros/point_cloud.h>
 
 #include <mcl_3dl/chunked_kdtree.h>
+#include <mcl_3dl/point_types.h>
 #include <mcl_3dl/state_6dof.h>
 #include <mcl_3dl/vec3.h>
 
@@ -61,23 +62,23 @@ class LidarMeasurementModelBase
 {
 public:
   using Ptr = std::shared_ptr<LidarMeasurementModelBase>;
-  using PointType = pcl::PointXYZI;
+  using PointType = mcl_3dl::PointXYZIL;
 
   virtual void loadConfig(
-      const ros::NodeHandle &nh,
-      const std::string &name) = 0;
+      const ros::NodeHandle& nh,
+      const std::string& name) = 0;
   virtual void setGlobalLocalizationStatus(
       const size_t, const size_t) = 0;
   virtual float getMaxSearchRange() const = 0;
 
   virtual pcl::PointCloud<PointType>::Ptr filter(
-      const pcl::PointCloud<PointType>::ConstPtr &) const = 0;
+      const pcl::PointCloud<PointType>::ConstPtr&) const = 0;
 
   virtual LidarMeasurementResult measure(
-      ChunkedKdtree<PointType>::Ptr &,
-      const pcl::PointCloud<PointType>::ConstPtr &,
-      const std::vector<Vec3> &,
-      const State6DOF &) const = 0;
+      ChunkedKdtree<PointType>::Ptr&,
+      const pcl::PointCloud<PointType>::ConstPtr&,
+      const std::vector<Vec3>&,
+      const State6DOF&) const = 0;
 };
 }  // namespace mcl_3dl
 

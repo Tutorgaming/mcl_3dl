@@ -43,12 +43,14 @@ namespace mcl_3dl_compat
 //    Set default_level to supported_level.
 // 2. Set default_level to current_level.
 // 3. Increment supported_level and remove old topic names.
+#ifndef UNDEF_COMPATIBILITY_LEVEL
 const int current_level = 1;
 const int supported_level = 0;
 const int default_level = supported_level;
 
 STATIC_ASSERT(supported_level <= current_level && current_level <= supported_level + 1);
 STATIC_ASSERT(supported_level <= default_level && default_level <= current_level);
+#endif
 
 int getCompat()
 {
@@ -86,7 +88,7 @@ void checkCompatMode()
         ros::this_node::getName().c_str(), current_level);
   }
 }
-std::string getSimplifiedNamespace(ros::NodeHandle &nh)
+std::string getSimplifiedNamespace(ros::NodeHandle& nh)
 {
   if (nh.getUnresolvedNamespace() == ros::this_node::getName())
     return std::string("~/");
@@ -96,14 +98,14 @@ std::string getSimplifiedNamespace(ros::NodeHandle &nh)
 }
 template <class M, class T>
 ros::Subscriber subscribe(
-    ros::NodeHandle &nh_new,
-    const std::string &topic_new,
-    ros::NodeHandle &nh_old,
-    const std::string &topic_old,
+    ros::NodeHandle& nh_new,
+    const std::string& topic_new,
+    ros::NodeHandle& nh_old,
+    const std::string& topic_old,
     uint32_t queue_size,
     void (T::*fp)(M) const,
-    T *obj,
-    const ros::TransportHints &transport_hints = ros::TransportHints())
+    T* obj,
+    const ros::TransportHints& transport_hints = ros::TransportHints())
 {
   if (getCompat() != current_level)
   {
@@ -122,14 +124,14 @@ ros::Subscriber subscribe(
 }
 template <class M, class T>
 ros::Subscriber subscribe(
-    ros::NodeHandle &nh_new,
-    const std::string &topic_new,
-    ros::NodeHandle &nh_old,
-    const std::string &topic_old,
+    ros::NodeHandle& nh_new,
+    const std::string& topic_new,
+    ros::NodeHandle& nh_old,
+    const std::string& topic_old,
     uint32_t queue_size,
     void (T::*fp)(M),
-    T *obj,
-    const ros::TransportHints &transport_hints = ros::TransportHints())
+    T* obj,
+    const ros::TransportHints& transport_hints = ros::TransportHints())
 {
   if (getCompat() != current_level)
   {
@@ -148,10 +150,10 @@ ros::Subscriber subscribe(
 }
 template <class M>
 ros::Publisher advertise(
-    ros::NodeHandle &nh_new,
-    const std::string &topic_new,
-    ros::NodeHandle &nh_old,
-    const std::string &topic_old,
+    ros::NodeHandle& nh_new,
+    const std::string& topic_new,
+    ros::NodeHandle& nh_old,
+    const std::string& topic_old,
     uint32_t queue_size,
     bool latch = false)
 {
@@ -172,12 +174,12 @@ ros::Publisher advertise(
 }
 template <class T, class MReq, class MRes>
 ros::ServiceServer advertiseService(
-    ros::NodeHandle &nh_new,
-    const std::string &service_new,
-    ros::NodeHandle &nh_old,
-    const std::string &service_old,
-    bool (T::*srv_func)(MReq &, MRes &),
-    T *obj)
+    ros::NodeHandle& nh_new,
+    const std::string& service_new,
+    ros::NodeHandle& nh_old,
+    const std::string& service_old,
+    bool (T::*srv_func)(MReq&, MRes&),
+    T* obj)
 {
   if (getCompat() != current_level)
   {
@@ -197,9 +199,9 @@ ros::ServiceServer advertiseService(
 
 template <typename T>
 void paramRename(
-    ros::NodeHandle &nh,
-    const std::string &param_name_new,
-    const std::string &param_name_old)
+    ros::NodeHandle& nh,
+    const std::string& param_name_new,
+    const std::string& param_name_old)
 {
   if (nh.hasParam(param_name_old))
   {

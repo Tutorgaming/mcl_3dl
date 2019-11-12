@@ -36,7 +36,8 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud2_iterator.h>
 #include <std_srvs/Trigger.h>
-#include <tf/transform_datatypes.h>
+#include <tf2/utils.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <random>
 #include <vector>
@@ -46,7 +47,7 @@
 namespace
 {
 void generateSamplePointcloud2(
-    sensor_msgs::PointCloud2 &cloud,
+    sensor_msgs::PointCloud2& cloud,
     const float x0,
     const float y0,
     const float x1,
@@ -113,7 +114,7 @@ void generateSamplePointcloud2(
   sensor_msgs::PointCloud2Iterator<float> iter_y(cloud, "y");
   sensor_msgs::PointCloud2Iterator<float> iter_z(cloud, "z");
 
-  for (const Point &p : points)
+  for (const Point& p : points)
   {
     *iter_x = p.x_ * o_cos - p.y_ * o_sin + offset_x + rand(engine);
     *iter_y = p.x_ * o_sin + p.y_ * o_cos + offset_y + rand(engine);
@@ -154,29 +155,38 @@ inline sensor_msgs::Imu generateImuMsg()
   imu.linear_acceleration.z = 9.8;
   return imu;
 }
-inline nav_msgs::Odometry generateOdomMsg()
+inline nav_msgs::Odometry generateOdomMsg(const float x)
 {
   nav_msgs::Odometry odom;
   odom.header.frame_id = "odom";
   odom.header.stamp = ros::Time::now();
+  odom.pose.pose.position.x = x;
   odom.pose.pose.position.y = 5;
   odom.pose.pose.orientation.w = 1;
   return odom;
 }
 }  // namespace
 
-TEST(GlobalLocalization, Localize)
+class GlobalLocalization : public ::testing::TestWithParam<float>
+{
+};
+
+INSTANTIATE_TEST_CASE_P(
+    OdometryOffset, GlobalLocalization,
+    ::testing::Values(5.0, 100.0));
+
+TEST_P(GlobalLocalization, Localize)
 {
   geometry_msgs::PoseArray::ConstPtr poses;
   mcl_3dl_msgs::Status::ConstPtr status;
 
-  const boost::function<void(const geometry_msgs::PoseArray::ConstPtr &)> cb_pose =
-      [&poses](const geometry_msgs::PoseArray::ConstPtr &msg) -> void
+  const boost::function<void(const geometry_msgs::PoseArray::ConstPtr&)> cb_pose =
+      [&poses](const geometry_msgs::PoseArray::ConstPtr& msg) -> void
   {
     poses = msg;
   };
-  const boost::function<void(const mcl_3dl_msgs::Status::ConstPtr &)> cb_status =
-      [&status](const mcl_3dl_msgs::Status::ConstPtr &msg) -> void
+  const boost::function<void(const mcl_3dl_msgs::Status::ConstPtr&)> cb_status =
+      [&status](const mcl_3dl_msgs::Status::ConstPtr& msg) -> void
   {
     status = msg;
   };
@@ -215,9 +225,16 @@ TEST(GlobalLocalization, Localize)
         pub_cloud.publish(
             generateCloudMsg(offset_x, offset_y, offset_z - laser_frame_height, offset_yaw));
         pub_imu.publish(generateImuMsg());
-        pub_odom.publish(generateOdomMsg());
+        pub_odom.publish(generateOdomMsg(0.0));
       }
       ASSERT_TRUE(ros::ok());
+      for (int i = 0; i < 5; ++i)
+      {
+        // Publish odom multiple times to make mcl_3dl internal odometry diff zero
+        pub_odom.publish(generateOdomMsg(GetParam()));
+        ros::Duration(0.1).sleep();
+        ros::spinOnce();
+      }
 
       std_srvs::Trigger trigger;
       ASSERT_TRUE(src_global_localization.call(trigger));
@@ -233,7 +250,7 @@ TEST(GlobalLocalization, Localize)
         pub_cloud.publish(
             generateCloudMsg(offset_x, offset_y, offset_z - laser_frame_height, offset_yaw));
         pub_imu.publish(generateImuMsg());
-        pub_odom.publish(generateOdomMsg());
+        pub_odom.publish(generateOdomMsg(GetParam()));
       }
       ASSERT_TRUE(ros::ok());
 
@@ -247,7 +264,7 @@ TEST(GlobalLocalization, Localize)
         pub_cloud.publish(
             generateCloudMsg(offset_x, offset_y, offset_z - laser_frame_height, offset_yaw));
         pub_imu.publish(generateImuMsg());
-        pub_odom.publish(generateOdomMsg());
+        pub_odom.publish(generateOdomMsg(GetParam()));
       }
       ASSERT_TRUE(ros::ok());
 
@@ -259,36 +276,47 @@ TEST(GlobalLocalization, Localize)
         pub_cloud.publish(
             generateCloudMsg(offset_x, offset_y, offset_z - laser_frame_height, offset_yaw));
         pub_imu.publish(generateImuMsg());
-        pub_odom.publish(generateOdomMsg());
+        pub_odom.publish(generateOdomMsg(GetParam()));
       }
       ASSERT_TRUE(ros::ok());
 
       ASSERT_TRUE(static_cast<bool>(status));
       ASSERT_TRUE(static_cast<bool>(poses));
 
-      const tf::Transform true_pose(
-          tf::Quaternion(0, 0, sinf(-offset_yaw / 2), cosf(-offset_yaw / 2)),
-          tf::Vector3(
+      const tf2::Transform true_pose(
+          tf2::Quaternion(0, 0, sinf(-offset_yaw / 2), cosf(-offset_yaw / 2)),
+          tf2::Vector3(
               -(offset_x * cos(-offset_yaw) - offset_y * sin(-offset_yaw)),
               -(offset_x * sin(-offset_yaw) + offset_y * cos(-offset_yaw)),
               -offset_z));
       bool found_true_positive(false);
-      for (const auto &pose : poses->poses)
+      float dist_err_min = FLT_MAX;
+      float ang_err_min = FLT_MAX;
+      for (const auto& pose : poses->poses)
       {
-        tf::Transform particle_pose;
-        tf::poseMsgToTF(pose, particle_pose);
+        tf2::Transform particle_pose;
+        tf2::fromMsg(pose, particle_pose);
 
-        const tf::Transform tf_diff = particle_pose.inverse() * true_pose;
-        if (tf_diff.getOrigin().length() < 2e-1 &&
-            fabs(tf::getYaw(tf_diff.getRotation())) < 2e-1)
+        const tf2::Transform tf_diff = particle_pose.inverse() * true_pose;
+        const float dist_err = tf_diff.getOrigin().length();
+        const float ang_err = fabs(tf2::getYaw(tf_diff.getRotation()));
+        if (dist_err < 2e-1 && ang_err < 2e-1)
           found_true_positive = true;
+
+        if (dist_err_min > dist_err)
+        {
+          dist_err_min = dist_err;
+          ang_err_min = ang_err;
+        }
       }
-      ASSERT_TRUE(found_true_positive);
+      ASSERT_TRUE(found_true_positive)
+          << "Minimum position error: " << dist_err_min << std::endl
+          << "Angular error: " << ang_err_min << std::endl;
     }
   }
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
   testing::InitGoogleTest(&argc, argv);
   ros::init(argc, argv, "test_global_localization");
